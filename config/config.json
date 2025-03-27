@@ -1,0 +1,9 @@
+{
+  "server": {
+    "port": ":9090"
+  },
+  "postgres": {
+    "driver": "postgres",
+    "host": "user=user password=pass host=11.11.11.11 port=5432"
+  }
+}
