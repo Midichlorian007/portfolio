@@ -7,6 +7,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	echoMw "github.com/labstack/echo/v4/middleware"
+	"io"
+	"log"
 	"main/internal/handler"
 	"main/internal/middleware"
 	"main/internal/model"
@@ -19,10 +21,13 @@ type Application interface {
 }
 
 type application struct {
-	server      *echo.Echo
+	server *echo.Echo
+	cfg    *model.Config
+
 	handlers    *handler.Handler
 	middlewares *middleware.Middleware
-	cfg         *model.Config
+
+	AllClosers []io.Closer
 }
 
 func NewApplication() Application {
@@ -38,39 +43,57 @@ func (app *application) Start() error {
 		return err
 	}
 
-	app.initHandlers()
-	app.initMiddlewares()
-	app.initRouts()
+	defer app.CloseAllClosers()
 
-	err = app.server.Start(app.cfg.Server.Port)
+	err = app.initHandlers()
 	if err != nil {
-		return errors.New(model.LevelError + "server.Start: " + err.Error())
+		return err
 	}
 
-	return nil
+	app.initRoutsAndMiddlewares()
+
+	return app.server.Start(app.cfg.Server.Port)
+}
+
+func (app *application) CloseAllClosers() {
+	if app.AllClosers == nil {
+		return
+	}
+
+	for _, closer := range app.AllClosers {
+		if err := closer.Close(); err != nil {
+			log.Println(model.LevelError + "CloseAllClosers: " + err.Error())
+		}
+	}
 }
 
 func (app *application) Shutdown() error {
-	if app.server == nil {
-		return errors.New(model.LevelError + "Shutdown: server is nil ")
-	}
-
-	if err := app.server.Shutdown(context.TODO()); err != nil {
-		return errors.New(model.LevelError + "Shutdown: server.Shutdown: " + err.Error())
+	if app.server != nil {
+		if err := app.server.Shutdown(context.TODO()); err != nil {
+			return errors.New(model.LevelError + "Shutdown: server.Shutdown: " + err.Error())
+		}
 	}
 
 	return nil
 }
 
-func (app *application) initRouts() {
+func (app *application) initRoutsAndMiddlewares() {
+	app.initBasicMiddlewares()
 
+	//app.server.Use(app.middlewares.Authorization)
 	app.server.GET("/live", app.handlers.Live)
-	app.server.GET("/cfg", app.handlers.GetConfig)
-	app.server.GET("/sleep/:seconds", app.handlers.Sleep)
+	app.server.POST("/users", app.handlers.CreateUser)
+	app.server.GET("/users/:user_id", app.handlers.GetUserById)
+	app.server.PUT("/users/:user_id", app.handlers.UpdateUserById)
+	app.server.DELETE("/users/:user_id", app.handlers.DeleteUserById)
 
+	adminGroup := app.server.Group("/admin")
+	//adminGroup.Use(app.middlewares.AdminAuthorization)
+	adminGroup.GET("/cfg", app.handlers.GetConfig)
+	adminGroup.GET("/sleep/:seconds", app.handlers.Sleep)
 }
 
-func (app *application) initMiddlewares() {
+func (app *application) initBasicMiddlewares() {
 	app.middlewares = middleware.NewMiddleware(app.cfg)
 
 	app.server.Use(echoMw.RequestIDWithConfig(echoMw.RequestIDConfig{
@@ -83,12 +106,33 @@ func (app *application) initMiddlewares() {
 		Handler: app.middlewares.BodyLogger,
 	}))
 
-	//app.server.Use(app.middlewares.Authorization)
 	app.server.Use(echoMw.Recover())
 }
 
-func (app *application) initHandlers() {
-	app.handlers = handler.NewHandler(app.cfg)
+func (app *application) initHandlers() error {
+	handlers, closers, err := handler.NewHandler(app.cfg)
+	app.addClosers(closers)
+	if err != nil {
+		return err
+	}
+
+	app.handlers = handlers
+
+	return nil
+}
+
+func (app *application) addClosers(closers []io.Closer) {
+
+	if app.AllClosers == nil {
+		app.AllClosers = make([]io.Closer, 0)
+	}
+
+	if closers == nil {
+		return
+	}
+
+	app.AllClosers = append(app.AllClosers, closers...)
+
 }
 
 func (app *application) parseConfig(path string) error {

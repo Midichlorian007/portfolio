@@ -10,6 +10,11 @@ import (
 )
 
 func main() {
+	runWithGracefulShutDown()
+	//runWithNoGracefulShutDown()
+}
+
+func runWithGracefulShutDown() {
 	application := internal.NewApplication()
 
 	waitChan := make(chan struct{})
@@ -30,7 +35,7 @@ func main() {
 			return
 		}
 
-		log.Println(model.LevelInfo + ": application.Shutdown: successfully")
+		log.Println(model.LevelInfo + "application.Shutdown: successfully")
 	}()
 
 	err := application.Start()
@@ -40,4 +45,9 @@ func main() {
 	sysSignal <- syscall.SIGTERM
 
 	<-waitChan
+}
+
+func runWithNoGracefulShutDown() {
+	application := internal.NewApplication()
+	log.Println(application.Start())
 }

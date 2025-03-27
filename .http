@@ -2,7 +2,32 @@
 GET http://localhost:9090/live
 
 ###
-GET http://localhost:9090/cfg
+GET http://localhost:9090/admin/cfg
 
 ###
-GET http://localhost:9090/sleep/20
+GET http://localhost:9090/admin/sleep/5
+
+###
+DELETE http://localhost:9090/users/3
+
+###
+GET http://localhost:9090/users/4dfg
+
+###
+GET http://localhost:9090/users/999
+
+###
+POST http://localhost:9090/users
+Content-Type: application/json
+
+{
+  "name": "Jira"
+}
+
+###
+PUT http://localhost:9090/users/2
+Content-Type: application/json
+
+{
+  "name": "Redis12"
+}
